@@ -91,90 +91,91 @@
 
   <script>
     const tg = window.Telegram.WebApp;
-    tg.expand();
+tg.expand();
 
-    const API_ROOT = (window.BACKEND_URL || "https://resourceful-reverence-production.up.railway.app") + "/api";
-    let ADMIN_KEY = null;
+const API_ROOT = window.BACKEND_URL + "/api";
 
-    function getHeaders() {
-      const h = {};
-      if (ADMIN_KEY) h["X-Admin-Key"] = ADMIN_KEY;
-      return h;
+// завжди правильний ключ
+const ADMIN_KEY = "DEV_ADMIN_KEY";
+
+function getHeaders() {
+  return {
+    "X-Admin-Key": ADMIN_KEY
+  };
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url, { headers: getHeaders() });
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
+}
+
+async function loadCandidates() {
+  const box = document.getElementById("candidates");
+  box.textContent = "Loading…";
+
+  try {
+    const data = await fetchJSON(API_ROOT + "/hr/candidates");
+
+    box.innerHTML = "";
+
+    if (!data.length) {
+      box.textContent = "No candidates yet.";
+      return;
     }
 
-    async function fetchJSON(url, options = {}) {
-      const merged = {
-        ...options,
-        headers: {
-          ...(options.headers || {}),
-          ...getHeaders(),
-        },
-      };
-      const res = await fetch(url, merged);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return await res.json();
+    data.forEach(c => {
+      const div = document.createElement("div");
+      div.className = "ci";
+      div.innerHTML = `
+        <div class="ci-title">${c.full_name || "Без імені"}</div>
+        <div class="ci-sub">ID: ${c.id} · TG: ${c.tg_id || "—"}</div>
+      `;
+      div.onclick = () => loadDetail(c.id);
+      box.appendChild(div);
+    });
+  } catch (e) {
+    box.textContent = "Error loading candidates.";
+  }
+}
+
+async function loadDetail(id) {
+  const box = document.getElementById("detail");
+  box.textContent = "Loading...";
+  box.style.display = "block";
+
+  try {
+    const data = await fetchJSON(API_ROOT + "/hr/candidate/" + id);
+
+    const last_voice = data.voices[0];
+    const last_photo = data.photos[0];
+    const last_report = data.reports[0];
+
+    let html = `
+      <b>${data.candidate.full_name || "Без імені"}</b><br>
+      <div class="small">ID: ${data.candidate.id}</div>
+    `;
+
+    if (last_report) {
+      html += `<div class="pill pill-${last_report.risk_level}">Ризик: ${last_report.risk_level}</div>`;
+      html += `<div>${last_report.summary}</div>`;
     }
 
-    async function loadCandidates() {
-      const box = document.getElementById("candidates");
-      box.textContent = "Loading...";
-      try {
-        const data = await fetchJSON(API_ROOT + "/hr/candidates");
-        box.innerHTML = "";
-        if (!data.length) {
-          box.textContent = "No candidates yet.";
-          return;
-        }
-        data.forEach((c) => {
-          const div = document.createElement("div");
-          div.className = "ci";
-          div.innerHTML = `
-            <div class="ci-title">${c.full_name || "Без імені"}</div>
-            <div class="ci-sub">ID: ${c.id} · TG: ${c.tg_id || "—"}</div>
-          `;
-          div.onclick = () => loadDetail(c.id);
-          box.appendChild(div);
-        });
-      } catch (err) {
-        box.textContent = "Error loading candidates.";
-      }
+    if (last_voice) {
+      html += `<div class="kv"><div class="kv-label">Стрес:</div><div class="kv-value">${last_voice.stress_score}</div></div>`;
     }
 
-    async function loadDetail(id) {
-      const box = document.getElementById("detail");
-      box.style.display = "block";
-      box.textContent = "Loading...";
-      try {
-        const data = await fetchJSON(API_ROOT + "/hr/candidate/" + id);
-        const { candidate, report, last_voice, last_photo } = data;
-        let html = "";
-        html += `<div><b>${candidate.full_name || "Без імені"}</b></div>`;
-        html += `<div class="small">ID: ${candidate.id} · ${candidate.created_at}</div>`;
-        if (report && report.risk_level) {
-          html += `<div class="pill pill-${report.risk_level}">Ризик: ${report.risk_level}</div>`;
-        }
-        if (report && report.summary) {
-          html += `<div style="margin-bottom:6px;">${report.summary}</div>`;
-        }
-        if (last_voice) {
-          html += `<div class="kv"><div class="kv-label">Стрес (голос):</div><div class="kv-value">${last_voice.stress_score.toFixed(2)} / 100 (${last_voice.level})</div></div>`;
-        }
-        if (last_photo) {
-          html += `<div class="kv"><div class="kv-label">Настрій (фото):</div><div class="kv-value">${last_photo.mood}</div></div>`;
-        }
-        box.innerHTML = html;
-      } catch (err) {
-        box.textContent = "Error loading candidate.";
-      }
+    if (last_photo) {
+      html += `<div class="kv"><div class="kv-label">Настрій:</div><div class="kv-value">${last_photo.mood}</div></div>`;
     }
 
-    // Admin key: можна передати через start_param, або захардкодити / localStorage
-    ADMIN_KEY =
-      (tg.initDataUnsafe && tg.initDataUnsafe.start_param) ||
-      localStorage.getItem("hr_admin_key") ||
-      "DEV_ADMIN_KEY";
+    box.innerHTML = html;
+  } catch (e) {
+    box.textContent = "Error loading.";
+  }
+}
 
-    loadCandidates();
+loadCandidates();
   </script>
 </body>
 </html>
